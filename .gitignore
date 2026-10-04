@@ -1,0 +1,12 @@
+node_modules/
+.env
+.env.*
+!.env.example
+*.log
+cookies.txt
+backend/uploads/
+dist/
+coverage/
+.DS_Store
+# The PDFs are marked Confidential. Do not publish them to a public repo.
+docs/*.pdf

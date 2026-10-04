@@ -1,0 +1,17 @@
+# LOCAL DEVELOPMENT ONLY. Do not use these credentials in production.
+services:
+  db:
+    image: postgres:16
+    container_name: lexskill-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: lexskill
+      POSTGRES_PASSWORD: lexskill_dev_password
+      POSTGRES_DB: lexskill
+    ports:
+      - "5432:5432"
+    volumes:
+      - lexskill_pgdata:/var/lib/postgresql/data
+
+volumes:
+  lexskill_pgdata:

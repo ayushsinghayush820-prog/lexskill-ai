@@ -1,0 +1,306 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  STUDENT
+  FACULTY
+  DEAN
+  ADMIN
+}
+
+enum AssessmentStatus {
+  DRAFT
+  PUBLISHED
+  CLOSED
+}
+
+enum IntegrityMode {
+  SUPERVISED
+  PROCESS_TRACKED
+  OPEN_DISCLOSED
+  FORMATIVE
+}
+
+enum SubmissionStatus {
+  SUBMITTED
+  IN_REVIEW
+  FINALISED
+  RELEASED
+  REEVAL_REQUESTED
+}
+
+enum AiStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+enum CitationStatus {
+  VERIFIED
+  FOUND_MISMATCH
+  FOUND_UNSUPPORTED
+  NOT_FOUND
+  CANNOT_CHECK
+}
+
+enum ReviewStatus {
+  IN_PROGRESS
+  FINALISED
+}
+
+enum SkillDimension {
+  ISSUE_SPOTTING
+  APPLICATION_OF_LAW
+  DRAFTING_QUALITY
+  ARGUMENT_STRUCTURE
+  CITATION_ACCURACY
+  PROFESSIONAL_LANGUAGE
+}
+
+model Institution {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+
+  users        User[]
+  cohorts      Cohort[]
+  assessments  Assessment[]
+  submissions  Submission[]
+  skillRecords SkillRecord[]
+}
+
+model Cohort {
+  id            String   @id @default(cuid())
+  institutionId String
+  name          String
+  createdAt     DateTime @default(now())
+
+  institution Institution  @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  students    User[]
+  assessments Assessment[]
+
+  @@unique([institutionId, name])
+}
+
+model User {
+  id            String    @id @default(cuid())
+  institutionId String
+  cohortId      String?
+  role          Role
+  email         String    @unique
+  passwordHash  String
+  name          String
+  studentNumber String?
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  lastLoginAt   DateTime?
+
+  institution        Institution            @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  cohort             Cohort?                @relation(fields: [cohortId], references: [id], onDelete: SetNull)
+  assessmentsCreated Assessment[]           @relation("AssessmentCreator")
+  assignments        AssessmentAssignment[]
+  submissions        Submission[]
+  reviews            FacultyReview[]
+  skillRecords       SkillRecord[]
+
+  @@unique([institutionId, studentNumber])
+  @@index([institutionId, role])
+}
+
+model Assessment {
+  id            String           @id @default(cuid())
+  institutionId String
+  cohortId      String
+  createdById   String
+  title         String
+  courseName    String
+  instructions  String           @db.Text
+  integrityMode IntegrityMode    @default(SUPERVISED)
+  status        AssessmentStatus @default(DRAFT)
+  dueAt         DateTime?
+  publishedAt   DateTime?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  institution Institution            @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  cohort      Cohort                 @relation(fields: [cohortId], references: [id])
+  createdBy   User                   @relation("AssessmentCreator", fields: [createdById], references: [id])
+  criteria    RubricCriterion[]
+  assignments AssessmentAssignment[]
+  submissions Submission[]
+
+  @@index([institutionId, status])
+}
+
+model RubricCriterion {
+  id             String         @id @default(cuid())
+  assessmentId   String
+  name           String
+  description    String?        @db.Text
+  skillDimension SkillDimension
+  maxScore       Int
+  descriptors    Json?
+  position       Int            @default(0)
+
+  assessment  Assessment           @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  finalScores FinalCriterionScore[]
+
+  @@index([assessmentId])
+}
+
+model AssessmentAssignment {
+  id           String   @id @default(cuid())
+  assessmentId String
+  studentId    String
+  createdAt    DateTime @default(now())
+
+  assessment Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  student    User       @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([assessmentId, studentId])
+}
+
+model Submission {
+  id                String           @id @default(cuid())
+  institutionId     String
+  assessmentId      String
+  studentId         String
+  content           String           @db.Text
+  wordCount         Int
+  status            SubmissionStatus @default(SUBMITTED)
+  submittedAt       DateTime         @default(now())
+  reevalReason      String?
+  reevalRequestedAt DateTime?
+
+  institution   Institution    @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  assessment    Assessment     @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  student       User           @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  aiEvaluations AiEvaluation[]
+  citations     Citation[]
+  review        FacultyReview?
+  skillRecords  SkillRecord[]
+
+  @@unique([assessmentId, studentId])
+  @@index([institutionId, status])
+}
+
+model AiEvaluation {
+  id            String    @id @default(cuid())
+  submissionId  String
+  status        AiStatus  @default(PENDING)
+  attempt       Int       @default(1)
+  provider      String
+  model         String
+  promptVersion String
+  result        Json?
+  overallScore  Float?
+  confidence    Float?
+  errorMessage  String?
+  startedAt     DateTime  @default(now())
+  completedAt   DateTime?
+
+  submission Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  @@index([submissionId])
+}
+
+model Citation {
+  id             String         @id @default(cuid())
+  submissionId   String
+  rawText        String
+  kind           String
+  normalized     String?
+  status         CitationStatus
+  providerName   String
+  isMock         Boolean        @default(true)
+  sourceExcerpt  String?        @db.Text
+  note           String?
+  facultyDecision String?
+  facultyNote    String?
+  resolvedById   String?
+  resolvedAt     DateTime?
+  createdAt      DateTime       @default(now())
+
+  submission Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  @@index([submissionId])
+}
+
+model FacultyReview {
+  id                String       @id @default(cuid())
+  submissionId      String       @unique
+  reviewerId        String
+  status            ReviewStatus @default(IN_PROGRESS)
+  aiEvaluationId    String?
+  finalScore        Float?
+  maxScore          Int?
+  feedbackToStudent String?      @db.Text
+  internalNote      String?      @db.Text
+  timeSpentSeconds  Int          @default(0)
+  finalisedAt       DateTime?
+  releasedAt        DateTime?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  submission     Submission            @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  reviewer       User                  @relation(fields: [reviewerId], references: [id])
+  criterionScores FinalCriterionScore[]
+}
+
+model FinalCriterionScore {
+  id             String         @id @default(cuid())
+  reviewId       String
+  criterionId    String
+  skillDimension SkillDimension
+  score          Float
+  maxScore       Int
+  comment        String?        @db.Text
+  aiScore        Float?
+  overridden     Boolean        @default(false)
+  overrideReason String?
+
+  review    FacultyReview   @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  criterion RubricCriterion @relation(fields: [criterionId], references: [id])
+
+  @@unique([reviewId, criterionId])
+}
+
+model SkillRecord {
+  id             String         @id @default(cuid())
+  institutionId  String
+  studentId      String
+  submissionId   String
+  skillDimension SkillDimension
+  score          Float
+  maxScore       Int
+  createdAt      DateTime       @default(now())
+
+  institution Institution @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  student     User        @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  submission  Submission  @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  @@unique([submissionId, skillDimension])
+  @@index([institutionId, skillDimension])
+}
+
+model AuditLog {
+  id            String   @id @default(cuid())
+  institutionId String?
+  actorId       String?
+  action        String
+  entityType    String?
+  entityId      String?
+  metadata      Json?
+  ip            String?
+  createdAt     DateTime @default(now())
+
+  @@index([institutionId, createdAt])
+  @@index([entityType, entityId])
+}
