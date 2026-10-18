@@ -16,7 +16,7 @@ app.set('trust proxy', 1); // correct client IPs behind Render/Railway proxies
 
 app.use(
   helmet({
-    contentSecurityPolicy: {
+    contentSecurityPolicy: { 
       directives: {
         defaultSrc: ["'self'"],
         scriptSrc: ["'self'"],
@@ -41,7 +41,11 @@ app.get('/api/health', (req, res) => res.json({ status: 'ok', time: new Date().t
 
 app.use('/api', apiLimiter, csrfHeader);
 app.use('/api/auth', require('./routes/authroutes'));
-// Part 2 onward adds: users, assessments, submissions, reviews, skills, analytics.
+app.use('/api/cohorts', require('./routes/cohortRoutes'));
+app.use('/api/admin', require('./routes/adminroutes'));
+app.use('/api/assessments', require('./routes/assessmentroutes'));
+app.use('/api/student', require('./routes/studentroutes'));
+// Part 3: reviews, AI. Part 4: analytics, dean.
 
 app.use('/api', (req, res, next) => next(new AppError(404, 'NOT_FOUND', 'API route not found.')));
 
